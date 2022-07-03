@@ -1,0 +1,68 @@
+
+def fm_sendcmd(cmd):
+    cs_txframe(1, cmd)
+    return cs_rxframe(1)['data']
+
+
+#print(fm_sendcmd(b'\x01\x18\x04\x00\x08\x00\x00\x80'))
+
+def fm_host_read(addr):
+    dat = fm_sendcmd(b'\x01\x18\x04\x00' + int.to_bytes(addr, 4, 'little'))
+    return int.from_bytes(dat[4:8], 'little')
+
+def fm_host_write(addr, val):
+    fm_sendcmd(b'\x01\x19\x08\x00' + int.to_bytes(addr, 4, 'little') + int.to_bytes(val, 4, 'little'))
+
+def fm_bop_top_write(addr, val):
+    return b'\x85\x07\x04' + int.to_bytes(addr, 2, 'little') + int.to_bytes(val, 4, 'little')
+
+def fm_bop_udelay(delay):
+    return b'\x81\x04' + int.to_bytes(delay, 4, 'little')
+
+
+#################################################################
+## >>>>> 26 clock mannual on ##
+fm_host_write(0x80000224, fm_host_read(0x80000224) | (1<<0))
+fm_host_write(0x80000224, fm_host_read(0x80000224) | (1<<6))
+fm_host_write(0x80000224, fm_host_read(0x80000224) | (1<<16))
+fm_host_write(0x80000224, fm_host_read(0x80000224) | (1<<22))
+## >>>>> rx_det_out gating off ##
+fm_host_write(0x80102090, fm_host_read(0x80102090) | (1<<16))
+## >>>>> adc_dq gating off ##
+fm_host_write(0x80102090, fm_host_read(0x80102090) | (1<<15))
+## >>>>> adc_id gating off ##
+fm_host_write(0x80102090, fm_host_read(0x80102090) | (1<<14))
+## >>>>> adc_ck gating off ##
+fm_host_write(0x80102090, fm_host_read(0x80102090) | (1<<7))
+## >>>>> dig_ck gating off ##
+fm_host_write(0x80102090, fm_host_read(0x80102090) | (1<<6))
+
+#################################################################
+bops = b''
+## >>>>> turn on top clk ##
+bops += fm_bop_top_write(0x0a10, 0xffffffff)
+## >>>>> enable MT_cMOS ##
+bops += fm_bop_top_write(0x0060, 0x00000030)
+bops += fm_bop_top_write(0x0060, 0x00000005)
+bops += fm_bop_udelay(10)
+bops += fm_bop_top_write(0x0060, 0x00000045)
+## >>>>> enable Digital_OSC ##
+bops += fm_bop_twrite(0x0060, 0x00000001)
+## >>>>> set OSC clk out to FM ##
+bops += fm_bop_twrite(0x0060, 0x00000003)
+## >>>>> ReLease Hardwar Cock Gate ##
+bops += fm_bop_write(0x0060, 0x00000007)
+## >>>>> eneyble D.Sp Auto Cock Gate ##
+bops += fm_bop_write(0x0070, 0x00000040)
+## >>>>> DeEmphesis Settings ##
+bops += fm_bop_modify(0x0061, ~(1<<12), (0<<12))
+
+
+'''
+for i in range(0, 128, 4):
+    dat = fm_sendcmd(b'\x01\x18\x04\x00' + int.to_bytes(i+0x80000000, 4, 'little'))
+    print('%08x' % int.from_bytes(dat[4:8], 'little'))
+'''
+
+print(">>>>Entered")
+sleep_ms(2000)
