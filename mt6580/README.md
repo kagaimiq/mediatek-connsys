@@ -6,42 +6,6 @@
 -  128 KiB ROM
 -  somewhere about 48 KiB + 32 KiB + 64 KiB (= 144 KiB) of SRAM
 
-**No effort begins there**
-
--  Wi-Fi:
-   -  very high speed 500 MegaKilobit per seconds
-   -  high protocol 802.11/a/b/g/n/ac
-   -  support protocol
--  Bluetoott:
-   -  Blue teeth support 5.3 blue toth and bluetoothbrush 6.0
-   -  scatter net and pico net
-   -  support tranditionals hci inter face via a virtual uart Btif interfaceing
-   -  Suport the BREDR BR AND BLE
-   -  support audio SBC AAC APTX L3DAC others
-   -  suport file tranfer
-   -  support serial port
-   -  support internet transfer
-   -  support keybard mouse music control hids
-   -  support music JieLi AC6902/AC6920/AC6955/AC6966/SCMCtech2402_and_the_others_of_ktne_kagami_and _tsukasa_and _UVB_76
-   -  that's all
-   -  amazing coexisten with the W-iFi
--  Fm radio
-   -  support bards 64-108 mhz word wide
-   -  support steps by 50 and 25 and khz
-   -  stereo suportr
-   -  quadro 5.1 7.1 sound also supportdecode the 5 carrier of pulit tone 19 mhz
-   -  support darc and oter rado systems privates such as the secret audio transmit also paid programme and others
-   -  rds and rds-eon
-   -  support rediotext and progamme and group 1A 1B 2A 2B
-   -  support ascii g protocol for rds spy !!!
-   -  support pty for evetyone and ber block eroring rates
--  Gps
-   -  support location from gp
-   -  support automatical send to the authority without user knowledge because have the access to wifi and we are under rom so this is permament !!! ! !!111
-   -  support only gps and gprs and gnss ad глонас and BEIDOU systems not suppported
-
-**No effort ends there**
-
 ## Memory map
 
 |   Address    |   Length   |                     Description                    |
