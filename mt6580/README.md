@@ -67,8 +67,3 @@ For a protocol description, look [there](protocol.md).
 |   Address    |        Name       |               Description               |
 |--------------|-------------------|-----------------------------------------|
 | `0x80000000` | `CONN_MCU_CONFIG` | CONNSYS MCU config                      |
-
-## See also
-
--  [How to bringup](bringup.md)
--  [How to use](usage.md)
