@@ -417,28 +417,10 @@ try:
 
     ######################
 
-    def fm_sendcmd(cmd, dat):
-        return cs_sendcmd(1, cmd, dat)[1]
-
-    def fm_cmd_hostread(addr):
-        return int.from_bytes(fm_sendcmd(0x18, int.to_bytes(addr & 0xffffffff, 4, 'little')), 'little')
-
-    def fm_cmd_hostwrite(addr, val):
-        return fm_sendcmd(0x19, int.to_bytes(addr & 0xffffffff, 4, 'little') + int.to_bytes(val & 0xffffffff, 4, 'little'))
-
-    #print('%08x' % fm_cmd_hostread(0x2091000))
-
-    sram_bank2.write(0, b'Kaagami\x11\x22')
-
-    #for i in range(0, 0x100000000, 0x10000):
-    #    print('%08x' % i, fm_cmd_hostread(i).to_bytes(4, 'little'))
-
-    fm_cmd_hostwrite(0x0209fffc, 0xacebeca0)
-    fm_cmd_hostwrite(0x020a0000, 0xdeadbee)
-    fm_cmd_hostwrite(0x020afffc, 0xacebeca0)
-    print('%08x' % fm_cmd_hostread(0x0209fffc))
-    print('%08x' % fm_cmd_hostread(0x020a0000))
-    print('%08x' % fm_cmd_hostread(0x020afffc))
+    with open(sys.argv[1], 'r') as script:
+        print("============ Entering the script =============")
+        exec(script.read())
+        print("==============================================")
 
 except Exception as e:
     print(e)
