@@ -80,7 +80,7 @@ def pwrap_wait_busy():
             return
 
     ## Otherwise we raise exception!! ##
-    raise Exception('pwrap: timed out waiting to pwrap be not busy!')
+    raise Exception('pwrap: timed out waiting to pwrap become idle!')
 
 def pwrap_read(addr):
     pwrap_wait_busy()
@@ -343,9 +343,6 @@ def cs_rxframe(type=None, retry=True):
 
     return None
 
-
-
-
 ###############
 
 '''
@@ -380,7 +377,8 @@ CoreDump info:
 Conn MCU map:
   +00000000 => ROM (128k)
   +00060000 => Code RAM? (48k)
-  +02090000 => SRAM (xx)
+  +00100000 => SRAM_BANK2 (32k)
+  +02090000 => SRAM (64k)
   +70000000 => ??
   +80000000 => CONN regs
   +90000000 => AP regs!!!!   ---> Can re config the EMI MAP and Disable EMI MPU ===== Spyware Confirmed!!
@@ -417,10 +415,10 @@ try:
 
     ######################
 
-    with open(sys.argv[1], 'r') as script:
-        print("============ Entering the script =============")
-        exec(script.read())
-        print("==============================================")
+    for script in sys.argv[1].split(','):
+        with open(script, 'r') as script:
+            print("============ Entering the script [%s] =============" % script.name)
+            exec(script.read())
 
 except Exception as e:
     print(e)
@@ -441,6 +439,8 @@ while True:
                 pdat = btif_recv(plen)
                 pcrc = int.from_bytes(btif_recv(2), 'little')
                 print('%02x:%d:%02x=%04x' % (pload[0], pload[1]>>4, pload[3], pcrc), pdat)
+
+        sleep_ms(1)
 
     except Exception as e:
         print(e)
