@@ -1,26 +1,41 @@
 from periphery import MMIO, Serial, sleep_ms
-import sys, time
+import sys, time, threading
 
-topckgen        = MMIO(0x10000000, 0x1000)
-infracfg_ao     = MMIO(0x10001000, 0x1000)
-sleep           = MMIO(0x10006000, 0x1000)
-toprgu          = MMIO(0x10007000, 0x1000)
-pwrap           = MMIO(0x1000f000, 0x1000)
-emi             = MMIO(0x10205000, 0x1000)
-btif            = MMIO(0x1100E000, 0x100)
-conn_mcu_config = MMIO(0x18070000, 0x200)
-sram_bank2      = MMIO(0x18080000, 0x8000)
-wifi            = MMIO(0x180F0000, 0x10000)
+#
+# Peripheral memory area definition
+#
 
-konata          = MMIO(0x88000000, 0x8000000)  #<< Marked as Reserved memory in Device tree
+topckgen        = MMIO(0x10000000, 0x1000)      # TOPCKGEN
+infracfg_ao     = MMIO(0x10001000, 0x1000)      # INFRACFG_AO
+sleep           = MMIO(0x10006000, 0x1000)      # SLEEP
+toprgu          = MMIO(0x10007000, 0x1000)      # TOPRGU
+pwrap           = MMIO(0x1000f000, 0x1000)      # PWRAP
 
-# clear all the codeDumps
+emi             = MMIO(0x10205000, 0x1000)      # EMI
+
+btif            = MMIO(0x1100E000, 0x100)       # BTIF
+
+conn_mcu_config = MMIO(0x18070000, 0x200)       # CONN_MCU_CONFIG
+sram_bank2      = MMIO(0x18080000, 0x8000)      # SRAM_BANK2
+wifi            = MMIO(0x180F0000, 0x10000)     # WIFI
+
+#
+# Data memory area definition
+#
+
+konata          = MMIO(0x88000000, 0x2000000)  # << Reserved memory block
+
+#
+# Clear Coredump
+#
 konata.write(0x80000, bytes(0x400))
 konata.write(0x80400, bytes(0x8000))
 konata.write(0x88400, bytes(0x8000))
 konata.write(0x90400, bytes(0x1f000))
 
-## en sleep regs control ##
+#
+# Enable SLEEP/SPM register control
+#
 sleep.write32(0x000, 0x0B160001)
 
 ##################################################
@@ -313,8 +328,8 @@ def cs_txframe(type, dat=b'', txseq=0, txack=0):
     for b in dat: crc = (crc >> 8) ^ crc16table[(crc ^ b) & 0xff]
     frame += int.to_bytes(crc, 2, 'little')
 
-    #print('Sending', frame)
-    btif_send((b'\x7f' * 8) + frame)
+    #print('Sending', frame.hex())
+    btif_send(frame)
 
 def cs_rxframe(type=None, retry=True):
     while True:
@@ -333,7 +348,7 @@ def cs_rxframe(type=None, retry=True):
 
             rtype = head[1] >> 4
 
-            #print('Received', head,rtype,rlen,rdat,rcrc)
+            #print('Received', head,rtype,rlen,rdat.hex(),rcrc)
 
             if (not type is None) and (not type is rtype): continue
 
@@ -381,7 +396,7 @@ Conn MCU map:
   +02090000 => SRAM (64k)
   +70000000 => ??
   +80000000 => CONN regs
-  +90000000 => AP regs!!!!   ---> Can re config the EMI MAP and Disable EMI MPU ===== Spyware Confirmed!!
+  +90000000 => AP regs!!!!   ---> Can re config the EMI MAP and Disable EMI MPU ===== Backdoor Confirmed!!
   +F0000000 => emi map (2 MiB)
 '''
 
@@ -398,20 +413,23 @@ type::
 '''
 
 try:
+    cs_lock = threading.Lock()
+
     def cs_sendcmd(type, cmd, dat, noresp=False):
-        tx = bytes([0x01,cmd]) + len(dat).to_bytes(2, 'little') + dat
-        #print('will send cmd ', tx)
-        cs_txframe(type, tx)
-        
-        if noresp: return None
-        
-        while True:
-            rx = cs_rxframe(type)['data']
-            if len(rx) < 4: continue
-            #if rx[0] != 0x04: continue
-            if rx[1] != cmd: continue
-            dlen = int.from_bytes(rx[2:4], 'little')
-            return (rx[0], rx[4:4+dlen])
+        with cs_lock:
+            tx = bytes([0x01,cmd]) + len(dat).to_bytes(2, 'little') + dat
+            #print('will send cmd ', tx)
+            cs_txframe(type, tx)
+            
+            if noresp: return None
+            
+            while True:
+                rx = cs_rxframe(type)['data']
+                if len(rx) < 4: continue
+                #if rx[0] != 0x04: continue
+                if rx[1] != cmd: continue
+                dlen = int.from_bytes(rx[2:4], 'little')
+                return (rx[0], rx[4:4+dlen])
 
     ######################
 

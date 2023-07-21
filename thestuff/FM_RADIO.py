@@ -1,18 +1,23 @@
 ############################################
+#                                          #
 #     MediaTek MT6580 FM Radio Bringup     #
+#                                          #
 ############################################
-import base64
 
-## Commands ##
+import base64, threading, socket, struct
+
+#
+# Commands
+#
 
 def fm_sendcmd(cmd, dat):
     return cs_sendcmd(1, cmd, dat)[1]
 
 def fm_cmd_read(addr):
-    return int.from_bytes(fm_sendcmd(0x03, bytes([addr])), 'little')
+    return int.from_bytes(fm_sendcmd(0x03, struct.pack('<B', addr)), 'little')
 
 def fm_cmd_write(addr, val):
-    return int.from_bytes(fm_sendcmd(0x04, bytes([addr, val&0xff, (val>>8)&0xff])), 'little')
+    fm_sendcmd(0x04, struct.pack('<BH', addr, val))
 
 def fm_cmd_enable(bops=b''):
     return fm_sendcmd(0x07, bops)
@@ -27,40 +32,45 @@ def fm_cmd_dummy11(bops=b''):
     return fm_sendcmd(0x11, bops)
 
 def fm_cmd_dlpatch(chunks, chunk, dat):
-    return fm_sendcmd(0x12, bytes([chunks, chunk]) + dat)
+    return fm_sendcmd(0x12, struct.pack('<BB', chunks, chunk) + dat)
 
 def fm_cmd_dlcoeff(chunks, chunk, dat):
-    return fm_sendcmd(0x13, bytes([chunks, chunk]) + dat)
+    return fm_sendcmd(0x13, struct.pack('<BB', chunks, chunk) + dat)
 
 def fm_cmd_hostread(addr):
-    return int.from_bytes(fm_sendcmd(0x18, addr.to_bytes(4, 'little')), 'little')
+    return int.from_bytes(fm_sendcmd(0x18, struct.pack('<I', addr)), 'little')
 
 def fm_cmd_hostwrite(addr, val):
-    return fm_sendcmd(0x19, addr.to_bytes(4, 'little') + int.to_bytes(val & 0xffffffff, 4, 'little'))
+    return fm_sendcmd(0x19, struct.pack('<II', addr, val))
 
-## Basic Operations ##
+#
+# Basic operations
+#
 
 def fm_bop_gen(bop, data):
-    return bytes([0x80 + bop, len(data)]) + data
+    return struct.pack('<BB', 0x80+bop, len(data)) + data
 
 def fm_bop_write(addr, val):
-    return fm_bop_gen(0x00, bytes([addr, val&0xff, (val>>8)&0xff]))
+    return fm_bop_gen(0x00, struct.pack('<BH', addr, val))
 
 def fm_bop_udelay(us):
     return fm_bop_gen(0x01, us.to_bytes(4, 'little'))
 
 def fm_bop_rduntil(addr, mask, val):
-    return fm_bop_gen(0x02, bytes([addr, mask&0xff, (mask>>8)&0xff, val&0xff, (val>>8)&0xff]))
+    return fm_bop_gen(0x02, struct.pack('<BHH', addr, mask, val))
 
 def fm_bop_modify(addr, mask, val):
-    return fm_bop_gen(0x03, bytes([addr, mask&0xff, (mask>>8)&0xff, val&0xff, (val>>8)&0xff]))
+    return fm_bop_gen(0x03, struct.pack('<BHH', addr, mask & 0xffff, val & 0xffff))
 
 def fm_bop_topwrite(addr, val):
-    return fm_bop_gen(0x05, b'\x04' + addr.to_bytes(2, 'little') + val.to_bytes(4, 'little'))
+    return fm_bop_gen(0x05, struct.pack('<BHI', 4, addr, val))
 
 #################################################################
 
-## FM regs ##
+#
+# FM core registers
+#
+
 FM_STH2D                    = 0x2D
 FM_MAIN_MCLKDESENSE         = 0x38  # maybe 0x68?
 FM_STH39                    = 0x39
@@ -93,21 +103,21 @@ FM_DSP_PATCH_OFFSET         = 0x91
 FM_DSP_PATCH_DATA           = 0x92
 FM_DSP_MEM_CTRL4            = 0x93
 FM_I2S_CON0                 = 0x9B
-FM_STH9C                    = 0x9C # maybe I2S_CON1?
+FM_I2S_CON1                 = 0x9C # maybe!
 FM_ADDR_PAMD                = 0xB4
 FM_RDS_BDGRP_ABD_CTRL       = 0xB6
 FM_RDS_POINTER              = 0xF0
 
 '''
-FM_MAIN_CG1_CTRL:
+MAIN_CG1_CTRL:
     b4~b6 = osc freq [0:26MHz|1:19MHz|2:24MHz|3:38.4MHz|4:40MHz|5:52MHz]
 
-FM_MAIN_CG2_CTRL:
+MAIN_CG2_CTRL:
     b12 = deemphasis [0:50us|1:75us]
     b7 = output [0:lineout|1:i2s]
     b4 = antenna [0:long|1:short]
 
-FM_MAIN_CTRL:
+MAIN_CTRL:
     b0 = tune
     b1 = seek
     b2 = scan
@@ -117,11 +127,11 @@ FM_MAIN_CTRL:
     b6 = rds brst
     b8 = ramp down
 
-FM_CHANNEL_SET:
+CHANNEL_SET:
     b12~b15 = channel parameter
     b0~b9 = channel (64-115.2 MHz, 50khz step)
 
-FM_MAIN_INTR:
+MAIN_INTR:
     b0 = stc done
     b1 = iqcal done
     b2 = desense hit
@@ -129,17 +139,17 @@ FM_MAIN_INTR:
     b4 = sw intr
     b5 = rds
 
-FM_RSSI_IND:
+RSSI_IND:
     b12 = stereo flag
     b0~b9 = rssi
 
-FM_I2S_CON0:
+I2S_CON0:
     b0 = enable
     b1 = format [0:eiaj|1:i2s]
     b2 = word length [0:16bit|1:32bit]
     b3 = i2s source
 
-STH_9C:
+I2S_CON1: maybe? (at 0x9C)
     b0 = mute right/left channel
     b1 = mute left/right channel
 
@@ -167,7 +177,7 @@ fm_cmd_hostwrite(0x80102090, fm_cmd_hostread(0x80102090) | (1<<6))
 
 #-------- Powerup clock on -------#
 # turn on topclk
-bops = fm_bop_topwrite(0x0A10, 0xffffffff)
+bops  = fm_bop_topwrite(0x0A10, 0xffffffff)
 
 # enable MTCMOS
 bops += fm_bop_topwrite(0x0060, 0x00000030)
@@ -176,14 +186,16 @@ bops += fm_bop_udelay(10)
 bops += fm_bop_topwrite(0x0060, 0x00000045)
 
 # enable digital OSC
-bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x00000001)
+bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x0001)
 # set OSC clock out to FM
-bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x00000003)
+bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x0003)
 # enable DSP auto clock gate
-bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x00000007)
+bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x0007)
 
-# deemphasis
-bops += fm_bop_modify(FM_MAIN_CG2_CTRL, ~(1<<12), (0<<12))  # 0 = 50us, 1 = 75us
+# Deemphasis: 0 = 50 uS, 1 = 75 uS
+bops += fm_bop_modify(FM_MAIN_CG2_CTRL, ~(1<<12), (0<<12))
+# Antenna type: 0 = Long, 1 = Short
+bops += fm_bop_modify(FM_MAIN_CG2_CTRL, ~(1<<4), (1<<4))
 
 fm_cmd_enable(bops)
 #---------------------------------#
@@ -211,7 +223,9 @@ fm_cmd_dummy11(fm_bop_modify(FM_MAIN_CG2_CTRL, ~(1<<15), 0))
 fm_cmd_dummy11(fm_bop_modify(FM_MAIN_CG2_CTRL, ~(1<<1), 0))
 #---------------------------------#
 
-##--------> download patch <---------##
+#
+# Download DSP patch
+#
 fm_patch_data = base64.b64decode(
 'ACD/IQy8DkAAjsi9DUAAjjy9DEAAjgCOAI4AjgCOAI4AjriOILyYICG8HgAAvIoJ' +
 'AkMjvBkgAI5y+yS86AMAjgK8AEAAjgC8AQmCQyO8GSAAjnL7AI4CvABAAI4gvKQg' +
@@ -244,7 +258,9 @@ for i in range(nsegs):
     fm_cmd_dlpatch(nsegs, i, fm_patch_data[:segsz])
     fm_patch_data = fm_patch_data[segsz:]
 
-##--------> download coeff <---------##
+#
+# Download Coefficient data
+#
 fm_coeff_data = base64.b64decode(
 'AAAfAgAAiAkQQLkCFkB0ACNAKgk9QAQJSkAFCVdABwlkQHQAcUAAAAAEBgCrKgYB' +
 'BgEGAVcAVwBXABERWRIBAFoAmw7/D/8PIAABAAEAzQzg/9j//wCs/7z/AP8gAEgA' +
@@ -283,7 +299,7 @@ fm_cmd_write(FM_DSP_PATCH_CTRL, 0x0040)
 fm_cmd_write(FM_DSP_PATCH_CTRL, 0x0000)
 
 #------ Powerup digital init -----#
-bops = fm_bop_write(FM_MAIN_INTRMASK, 0x0021)
+bops  = fm_bop_write(FM_MAIN_INTRMASK, 0x0021)
 bops += fm_bop_write(FM_MAIN_EXTINTRMASK, 0x0021)
 bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x000F)
 bops += fm_bop_modify(FM_MAIN_CG2_CTRL, ~(1<<1), (1<<1))
@@ -296,8 +312,15 @@ bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x000F)
 fm_cmd_enable(bops)
 #---------------------------------#
 
-# Audio out I2S TX mode
-fm_cmd_write(FM_I2S_CON0, 0x0003) # src=0, wlen=16 bit, std=i2s, enable
+#
+# Config I2S output
+#
+fm_cmd_write(FM_I2S_CON0,
+     (1<<3)     # Source: 0 = ??, 1 = ??  - doesn't matter?
+    |(0<<2)     # Word length: 0 = 16-bit, 1 = 32-bit
+    |(1<<1)     # Standard: 0 = EIAJ, 1 = I2S
+    |(1<<0)     # Enable
+)
 
 #################################################################
 
@@ -305,11 +328,11 @@ def fm_rampdown():
     fm_cmd_write(FM_MAIN_CG1_CTRL, 0x0007)
     fm_cmd_write(FM_MAIN_CG1_CTRL, 0x000f)
 
-    bops = fm_bop_modify(FM_MAIN_CTRL, 0xfff0, 0x0000) # clear dsp state
-    bops += fm_bop_modify(FM_MAIN_CTRL, 0xffff, (1<<8)) # set dsp ramp down state
+    bops  = fm_bop_modify(FM_MAIN_CTRL, 0xfff0, 0x0000)  # clear dsp state
+    bops += fm_bop_modify(FM_MAIN_CTRL, 0xffff, (1<<8))  # set dsp ramp down state
     bops += fm_bop_rduntil(FM_MAIN_INTR, (1<<0), (1<<0)) # wait for 'stc done' int
-    bops += fm_bop_modify(FM_MAIN_CTRL, ~(1<<8), 0) # clear dsp ramp down state
-    bops += fm_bop_modify(FM_MAIN_INTR, 0xffff, (1<<0)) # clear 'stc done' int
+    bops += fm_bop_modify(FM_MAIN_CTRL, ~(1<<8), 0)      # clear dsp ramp down state
+    bops += fm_bop_modify(FM_MAIN_INTR, 0xffff, (1<<0))  # clear 'stc done' int
     fm_cmd_rampdown(bops)
 
 def fm_tune(freq):
@@ -329,24 +352,163 @@ def fm_tune(freq):
     fm_cmd_dummy11(fm_bop_modify(FM_CHANNEL_SET, ~0x3ff, int((freq - 64) / 0.05)))
     fm_cmd_dummy11(fm_bop_modify(FM_CHANNEL_SET, ~(0xf<<12), (0x0<<12)))
 
-    bops = b''
-    bops += fm_bop_write(FM_MAIN_INTRMASK, 0x0000)
+    bops  = fm_bop_write(FM_MAIN_INTRMASK, 0x0000)
     bops += fm_bop_write(FM_MAIN_EXTINTRMASK, 0x0000)
     bops += fm_bop_modify(FM_MAIN_CTRL, ~(7<<0), (1<<0)) # execute tune action
     bops += fm_bop_rduntil(FM_MAIN_INTR, (1<<0), (1<<0)) # wait until 'stc done' int
     bops += fm_bop_modify(FM_MAIN_INTR, 0xffff, (1<<0))  # clear 'stc done' int
     fm_cmd_tune(bops)
 
-while True:
-    inp = input('MTK-FM> ').split(' ')
-    if len(inp) < 1: continue
 
-    if inp[0] == 'exit':
-        break
 
-    elif inp[0] == 'tune':
-        fm_rampdown()
-        fm_tune(float(inp[1]))
+
+
+class RDSReceiver(threading.Thread):
+    def __init__(self, listener):
+        super().__init__()
+
+        self.listener = listener
+
+    def run(self):
+        self.running = True
+
+        fm_cmd_write(FM_RDS_CFG0, 6)  # buf_start_th
+        fm_cmd_dummy11(fm_bop_modify(FM_MAIN_CTRL, ~(1<<4), (1<<4))) # enable rds
+
+        while self.running:
+            fifostat = fm_cmd_read(FM_RDS_FIFO_STATUS0)
+
+            if (fifostat & 0x7f) >= 4:
+                rdsblk = [-1,-1,-1,-1]
+
+                for i in range(4):
+                    info = fm_cmd_read(FM_RDS_INFO)
+                    data = fm_cmd_read(FM_RDS_DATA_REG)
+
+                    if info & 1: rdsblk[i] = data
+
+                self.listener(rdsblk)
+
+            sleep_ms(10)
+
+        fm_cmd_dummy11(fm_bop_modify(FM_MAIN_CTRL, ~(1<<4), (0<<4))) # disable rds
+
+    def stop(self):
+        self.running = False
+        self.join()
+
+
+
+class RadioInfoThread(threading.Thread):
+    def __init__(self):
+        super().__init__()
+
+    def run(self):
+        self.running = True
+        while self.running:
+            rssi = fm_cmd_read(FM_RSSI_IND)
+            stereo = bool(rssi & 0x1000)
+            rssi &= 0x3ff
+
+            pamd = fm_cmd_read(FM_ADDR_PAMD)
+            if pamd > 511: pamd -= 1024
+            pamd = pamd / 16 * 6
+
+            print('RSSI = %d%s, PAMD = %d dB' % (rssi, " <<STEREO>>" if stereo else "", pamd))
+
+            sleep_ms(100)
+
+    def stop(self):
+        self.running = False
+        self.join()
+
+
+
+
+with socket.socket() as sock:
+    try:
+        sock.bind(('', 8751))
+        sock.listen(1)
+
+        currfreq = 106.4
+        fm_tune(currfreq)
+
+        rit = RadioInfoThread()
+        rit.start()
+
+        while True:
+            csock, caddr = sock.accept()
+            print(csock, caddr)
+
+            commlock = threading.Lock()
+
+            def rdsgroup(blk):
+                with commlock:
+                    tosend = ' '.join(['----' if b < 0 else '%04x' % b for b in blk]) + '\n'
+                    csock.send(bytes(tosend, 'ascii'))
+
+            rdsrx = RDSReceiver(rdsgroup)
+            rdsrx.start()
+
+            try:
+                while True:
+                    cmd = csock.recv(1024)
+                    if cmd == b'': break
+
+                    with commlock:
+                        cmd = str(cmd, 'ascii').strip('\n').split(' ')
+                        print(cmd)
+
+                        if cmd[0] == 'QUIT':
+                            break
+
+                        elif cmd[0] == 'SET_FREQ':
+                            freq = int(cmd[1]) / 1000
+
+                            if freq < 64 or freq > 115.2:
+                                csock.send(b'%% Wrong frequency: %d\n' % (freq * 1000))
+                            else:
+                                currfreq = freq
+
+                                fm_rampdown()
+                                fm_tune(currfreq)
+
+                                csock.send(b'%% Freq: %d\n' % (currfreq * 1000))
+
+                        elif cmd[0] == 'GET_FREQ':
+                            csock.send(b'%% Freq: %d\n' % (currfreq * 1000))
+
+                        elif cmd[0] == 'GET_SIGNAL':
+                            csock.send(b'%% Signal: Kagami\n')
+
+                        elif cmd[0] == 'SEEK':
+                            csock.send(b'%% Freq: %d\n' % (currfreq * 1000))
+
+                        elif cmd[0] == 'UP' or cmd[0] == 'DOWN':
+                            if cmd[0] == 'UP':
+                                currfreq += .1
+                                if currfreq > 115.2: currfreq = 115.2
+                            else:
+                                currfreq -= .1
+                                if currfreq < 64: currfreq = 64
+
+                            fm_rampdown()
+                            fm_tune(currfreq)
+
+                            csock.send(b'%% Freq: %d\n' % (currfreq * 1000))
+
+                        elif cmd[0] == 'ID':
+                            csock.send(b'% Id: KonataAndKagamiCoLtd\n')
+
+            finally:
+                rdsrx.stop()
+                csock.close()
+
+    except KeyboardInterrupt:
+        pass
+
+    except Exception as e:
+        print(e)
 
 #################################################################
 
@@ -358,7 +520,7 @@ fm_rampdown()
 
 #---------- Power down -----------#
 # set audio output i2s tx mode
-bops = fm_bop_modify(FM_I2S_CON0, ~0x7, 0)
+bops  = fm_bop_modify(FM_I2S_CON0, ~0x7, 0)
 
 # disable hw clock control
 bops += fm_bop_write(FM_MAIN_CG1_CTRL, 0x330f)
@@ -404,116 +566,4 @@ fm_cmd_hostwrite(0x80102090, fm_cmd_hostread(0x80102090) & ~(1<<6))
 
 ##################################################################################################
 
-"""
-while True:
-    
-    rssi = fm_cmd_read(FM_RSSI_IND)
-    stereo = bool(rssi & 0x1000)
-    rssi &= 0x3ff
-
-    pamd = fm_cmd_read(FM_ADDR_PAMD)
-    if pamd > 511: pamd -= 1024
-    pamd = pamd / 16 * 6
-
-    print('RSSI = %d%s, PAMD = %d dB' % (rssi, " <<STEREO>>" if stereo else "", pamd))
-    
-
-    ln = input('MTK> ').split(' ')
-    if len(ln) < 1: continue
-
-    if ln[0] == 'exit':
-        break
-
-    elif ln[0] == 'tune':
-        fm_rampdown()
-        fm_tune(float(ln[1]))
-"""
-
-#fm_cmd_write(FM_RDS_CFG0, 6)  # buf_start_th
-#fm_cmd_dummy11(fm_bop_modify(FM_MAIN_CTRL, ~(1<<4), (1<<4)))
-
-"""
-while True:
-    '''
-    print("good:%5d bad:%5d" % (fm_cmd_read(FM_RDS_GOODBK_CNT), fm_cmd_read(FM_RDS_BADBK_CNT)))
-
-    fifostat = fm_cmd_read(FM_RDS_FIFO_STATUS0)
-    print("fifo: %04x" % fifostat)
-
-    fifodiff = fifostat & 0x7f
-
-    if fifodiff >= 4:
-        for i in range(4):
-            print("info: %04x" % fm_cmd_read(FM_RDS_INFO))
-            print("data: %04x" % fm_cmd_read(FM_RDS_DATA_REG))
-
-        print("I:%04x Q:%04x" % (fm_cmd_read(FM_RDS_PWDI), fm_cmd_read(FM_RDS_PWDQ)))
-        print("pointer: %04x" % fm_cmd_read(FM_RDS_POINTER))
-
-    print()
-    '''
-
-    fifostat = fm_cmd_read(FM_RDS_FIFO_STATUS0)
-
-    if (fifostat & 0x7f) >= 4:
-        rdsblk = [-1,-1,-1,-1]
-
-        for i in range(4):
-            info = fm_cmd_read(FM_RDS_INFO)
-            data = fm_cmd_read(FM_RDS_DATA_REG)
-
-            if info & 1:
-                rdsblk[i] = data
-
-        print(' '.join('----' if b < 0 else '%04x' % b for b in rdsblk))
-
-    '''
-    fifostat = fm_cmd_read(FM_RDS_FIFO_STATUS0)
-    print("fifo stat %04x" % fifostat)
-
-    if (fifostat & 0x7f) >= 4:
-        print("\x1b[1;1H")
-
-        for i in range(4):
-            info = fm_cmd_read(FM_RDS_INFO)
-            data = fm_cmd_read(FM_RDS_DATA_REG)
-
-            print("%d: %04x %04x" % (i, info, data))
-
-        print()
-    '''
-
-    sleep_ms(10)
-"""
-
-"""
-import socket
-
-with socket.socket() as sock:
-    sock.bind(('', 8751))
-    sock.listen(1)
-
-    while True:
-        csock, caddr = sock.accept()
-        print(csock, caddr)
-
-        while True:
-            fifostat = fm_cmd_read(FM_RDS_FIFO_STATUS0)
-
-            if (fifostat & 0x7f) >= 4:
-                rdsblk = [-1,-1,-1,-1]
-
-                for i in range(4):
-                    info = fm_cmd_read(FM_RDS_INFO)
-                    data = fm_cmd_read(FM_RDS_DATA_REG)
-
-                    if info & 1: rdsblk[i] = data
-
-                composed = 'G:\r\n' + ''.join('----' if b < 0 else '%04X' % b for b in rdsblk) + '\r\n\r\n'
-                csock.send(bytes(composed, 'ascii'))
-
-            sleep_ms(10)
-
-        csock.close()
-"""
 

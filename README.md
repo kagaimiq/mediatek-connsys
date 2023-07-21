@@ -1,10 +1,6 @@
-# mediatek-connsys
+# MediaTek CONSYS
 
-Something related to the CONNSYS in the MediaTek SoCs...
+The CONSYS is a subsystem found in MediaTek SoCs that provides connectivity features like Bluetooth, Wi-Fi, FM radio, GPS and so on.
 
-CONNSYS is short for "Connectivity (sub)System",
-which provides connectivity features such as Wi-Fi, Bluetooth, GPS, FM radio and etc.
-
-## SoCs
-
-  - [MT6580](mt6580/)
+- [The Stuff that Does Something](thestuff/)
+- [MT6580 info](mt6580/)
